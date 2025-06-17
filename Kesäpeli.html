@@ -1,0 +1,280 @@
+<!DOCTYPE html>
+<html lang="fi">
+<head>
+  <meta charset="UTF-8">
+  <title>Juhannuspeli</title>
+  <style>
+    body {
+      margin: 0; overflow: hidden; font-family: Arial, sans-serif; background: #e6f3fa;
+    }
+    #topBar {
+      position: absolute; top: 8px; width: 400px; left: 50%; transform: translateX(-50%);
+      display: flex; justify-content: space-between; z-index: 2;
+    }
+    #score, #timer {
+      font-size: 1.2em; font-weight: bold; background: #fff8;
+      padding: 6px 20px; border-radius: 8px; margin: 2px; box-shadow: 0 2px 10px #b5c8e9;
+    }
+    #endMsg {
+      position: absolute; top: 48%; left: 50%; transform: translate(-50%, -50%);
+      font-size: 2em; font-weight: bold; color: #15679b; background: #fffefaec;
+      border-radius: 15px; padding: 30px 36px; text-align: center; display: none; z-index: 10;
+      box-shadow: 0 8px 48px #aaaa;
+    }
+    #feedback {
+      position: absolute; left: 0; right: 0; top: 100px; z-index: 9;
+      text-align: center; font-size: 1.6em; font-weight: bold;
+      color: #158557; text-shadow: 0 2px 10px #fff, 0 1px 4px #29975533;
+      pointer-events: none; opacity: 0; transition: opacity 0.22s;
+    }
+    #overlay {
+      position: fixed; z-index: 12; width: 100vw; height: 100vh;
+      background: rgba(240,248,255, 0.97); display: flex; align-items: center; justify-content: center;
+      top: 0; left: 0;
+    }
+    #ohjeetbox {
+      max-width: 350px; background: #fffefdcc; border-radius: 16px;
+      box-shadow: 0 4px 24px #aaccff70; padding: 38px 30px 36px 30px;
+      text-align: center; font-size: 1.13em; font-family: Arial, sans-serif;
+    }
+    #ohjeetbox h2 {
+      color: #2360a9; margin-top: 0; margin-bottom: 13px;
+      font-size: 2em; letter-spacing: 2px; font-family: Arial Black, Arial, sans-serif;
+    }
+    #ohjeetbox button {
+      margin-top: 28px; background: #43a047; color: white; font-size: 1.1em;
+      border: none; border-radius: 8px; padding: 10px 34px; cursor: pointer;
+      box-shadow: 0 2px 10px #0002; transition: background 0.18s;
+    }
+    #ohjeetbox button:hover { background: #2a7832; }
+    canvas {
+      background: #f0ffe0;
+      display: block;
+      margin: 44px auto 0 auto;
+      border: 2px solid #444;
+      border-radius: 14px;
+      box-shadow: 0 8px 32px #b6cfe955;
+      position: relative;
+    }
+  </style>
+</head>
+<body>
+  <div id="topBar">
+    <div id="score">Pisteet: 0</div>
+    <div id="timer">Aikaa: 60s</div>
+  </div>
+  <div id="feedback"></div>
+  <div id="endMsg"></div>
+  <canvas id="gameCanvas" width="400" height="600"></canvas>
+  <div id="overlay">
+    <div id="ohjeetbox">
+      <h2>Juhannuspeli</h2>
+      <p>
+        Kerää <b>saunavihtoja</b> (🌿), <b>makkaroita</b> (🌭) ja <b>radioita</b> (📻) koriin!<br><br>
+        <b>Nuolinäppäimet</b> tai <b>kosketusliike</b> vasemmalle/oikealle liikuttaa koria.<br>
+        Tänä juhannuksena emme halua kastua, joten vältä sadepilviä (🌧️)!<br>
+        Peli kestää 60 sekuntia.<br>
+        <br>
+        <b>Iloista juhannusta!</b>
+      </p>
+      <button id="aloitaNappi">Aloita peli</button>
+    </div>
+  </div>
+<script>
+  const canvas = document.getElementById("gameCanvas");
+  const ctx = canvas.getContext("2d");
+  const scoreElem = document.getElementById("score");
+  const timerElem = document.getElementById("timer");
+  const endMsg = document.getElementById("endMsg");
+  const feedbackElem = document.getElementById("feedback");
+  const overlay = document.getElementById("overlay");
+  const aloitaNappi = document.getElementById("aloitaNappi");
+  const goodSound = new Audio("Yeeääni.mp3");
+  const badSound = new Audio("Splash.mp3");
+
+  const player = {
+    x: 170, y: 560, width: 60, height: 24, speed: 7, dx: 0
+  };
+  const goodItems = ["vihta", "makkara", "radio"];
+  const itemImages = {
+    vihta: "🌿",
+    makkara: "🌭",
+    radio: "📻",
+    vesisade: "🌧️"
+  };
+  let items = [];
+  let score = 0;
+  let gameSpeed = 2.2;
+  let spawnInterval = 900;
+  let timeLeft = 60;
+  let gameActive = false;
+  let itemSpawnTimeout = null;
+  let gameTimer = null;
+
+  function drawPlayer() {
+    ctx.save();
+    ctx.beginPath();
+    ctx.ellipse(player.x + player.width/2, player.y + player.height/2 + 4, player.width/2, player.height/2, 0, 0, 2*Math.PI);
+    ctx.fillStyle = "#f3c684";goodItems
+    ctx.fill();
+    ctx.strokeStyle = "#b08b51";
+    ctx.lineWidth = 2.3;
+    ctx.stroke();
+    ctx.beginPath();
+    ctx.arc(player.x + player.width/2, player.y + player.height/2, player.width/2-6, Math.PI, 2*Math.PI);
+    ctx.lineWidth = 3;
+    ctx.stroke();
+    ctx.restore();
+  }
+  function drawItems() {
+    items.forEach(item => {
+      ctx.font = "32px serif";
+      ctx.textBaseline = "top";
+      ctx.fillText(itemImages[item.type], item.x, item.y);
+    });
+  }
+  function drawScore() { scoreElem.textContent = "Pisteet: " + score; }
+  function drawTimer() { timerElem.textContent = "Aikaa: " + timeLeft + "s"; }
+  function clear() { ctx.clearRect(0, 0, canvas.width, canvas.height); }
+  function showFeedback(text, good) {
+    feedbackElem.textContent = text;
+    feedbackElem.style.color = good ? "#158557" : "#bb2222";
+    feedbackElem.style.opacity = 1;
+    setTimeout(() => { feedbackElem.style.opacity = 0; }, 900);
+  }
+  function updateItems() {
+    items.forEach(item => item.y += item.speed);
+    items = items.filter(item => {
+      if (
+        item.y + item.height >= player.y &&
+        item.x + item.width >= player.x &&
+        item.x <= player.x + player.width &&
+        item.y < player.y + player.height
+      ) {
+        if (goodItems.includes(item.type)) {
+          score += 1;
+          showFeedback(Math.random() > 0.5 ? "jee!" : "jippii!", true);
+            goodSound.currentTime = 0;
+        goodSound.play();
+        } else {
+          score -= 1;
+          showFeedback(Math.random() > 0.5 ? "voi ei!" : "splash!", false);
+             badSound.currentTime = 0;
+        badSound.play();
+        }
+        increaseDifficulty();
+        return false;
+      }
+      return item.y < canvas.height;
+    });
+  }
+  function increaseDifficulty() {
+    if (timeLeft < 45) { gameSpeed = 2.8; spawnInterval = 750; }
+    if (timeLeft < 30) { gameSpeed = 3.5; spawnInterval = 600; }
+    if (timeLeft < 15) { gameSpeed = 4.2; spawnInterval = 430; }
+  }
+  function update() {
+    if (!gameActive) return;
+    clear();
+    drawPlayer();
+    drawItems();
+    drawScore();
+    drawTimer();
+
+    player.x += player.dx;
+    if (player.x < 0) player.x = 0;
+    if (player.x + player.width > canvas.width) player.x = canvas.width - player.width;
+
+    updateItems();
+
+    requestAnimationFrame(update);
+  }
+  function spawnItem() {
+    if (!gameActive) return;
+    const type = Math.random() < 0.8 ? goodItems[Math.floor(Math.random() * goodItems.length)] : "vesisade";
+    const speed = gameSpeed + Math.random()*1.2;
+    items.push({
+      x: 10 + Math.random() * 340,
+      y: -36,
+      type: type,
+      width: 30,
+      height: 30,
+      speed: speed
+    });
+    itemSpawnTimeout = setTimeout(spawnItem, spawnInterval + Math.random()*330);
+  }
+  function startTimer() {
+    gameTimer = setInterval(() => {
+      timeLeft--;
+      drawTimer();
+      if (timeLeft <= 0) {
+        endGame();
+      }
+    }, 1000);
+  }
+  function endGame() {
+    gameActive = false;
+    clearInterval(gameTimer);
+    clearTimeout(itemSpawnTimeout);
+    endMsg.innerHTML = `Aika loppui!<br>Pisteesi: <b>${score}</b><br><br>Hyvää Juhannusta!`;
+    endMsg.style.display = "block";
+  }
+  function keyDown(e) {
+    if (!gameActive) return;
+    if (e.key === "ArrowRight") player.dx = player.speed;
+    else if (e.key === "ArrowLeft") player.dx = -player.speed;
+  }
+  function keyUp(e) {
+    if (!gameActive) return;
+    if (e.key === "ArrowRight" || e.key === "ArrowLeft") player.dx = 0;
+  }
+  // Kosketusohjaus mobiilille
+  let touchX = null;
+  canvas.addEventListener("touchstart", e => {
+    if (!gameActive) return;
+    touchX = e.touches[0].clientX;
+  });
+  canvas.addEventListener("touchmove", e => {
+    if (!gameActive || touchX === null) return;
+    let newX = e.touches[0].clientX;
+    let delta = newX - touchX;
+    player.x += delta * 1.1;
+    if (player.x < 0) player.x = 0;
+    if (player.x + player.width > canvas.width) player.x = canvas.width - player.width;
+    touchX = newX;
+  });
+  canvas.addEventListener("touchend", () => { touchX = null; });
+
+  document.addEventListener("keydown", keyDown);
+  document.addEventListener("keyup", keyUp);
+
+  aloitaNappi.onclick = () => {
+    overlay.style.display = "none";
+    endMsg.style.display = "none";
+    items = [];
+    score = 0;
+    gameSpeed = 2.2;
+    spawnInterval = 900;
+    timeLeft = 60;
+    gameActive = true;
+    player.x = 170;
+    player.dx = 0;
+    drawScore();
+    drawTimer();
+    clear();
+    drawPlayer();
+    spawnItem();
+    startTimer();
+    update();
+  };
+
+  // Näytä ohjeet alkuun
+  overlay.style.display = "";
+  endMsg.style.display = "none";
+  drawScore();
+  drawTimer();
+  clear();
+  drawPlayer();
+</script>
+</body>
+</html>
